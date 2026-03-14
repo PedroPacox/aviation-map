@@ -293,7 +293,9 @@
 <script>
 // ── CONFIG ──────────────────────────────────────────────
 const MAPTILER_KEY = 'BPVpXuAbKK46DodFKxyR';
-const METAR_API = 'https://aviationweather.gov/api/data/metar';
+const METAR_API_BASE = 'https://aviationweather.gov/api/data/metar';
+const CORS_PROXY = 'https://corsproxy.io/?url=';
+const METAR_API = CORS_PROXY + encodeURIComponent(METAR_API_BASE);
 const METAR_REFRESH_MIN = 30;
 
 const CAT_COLORS = {
@@ -530,21 +532,36 @@ async function refreshMetar() {
   metarData = {};
   let fetched = 0;
 
+  const errors = [];
   for (const batch of batches) {
     try {
       const ids = batch.join(',');
-      const url = `${METAR_API}?ids=${ids}&format=json&hours=2`;
-      const res = await fetch(url);
-      if (!res.ok) continue;
+      const rawUrl = `${METAR_API_BASE}?ids=${ids}&format=json&hours=2`;
+      const url = CORS_PROXY + encodeURIComponent(rawUrl);
+      const res = await fetch(url, {
+        headers: { 'Accept': 'application/json' }
+      });
+      if (!res.ok) {
+        errors.push(`HTTP ${res.status}`);
+        continue;
+      }
       const data = await res.json();
+      if (!Array.isArray(data)) {
+        errors.push('Non-array response');
+        continue;
+      }
       for (const m of data) {
-        if (m.icaoId) {
-          metarData[m.icaoId] = m;
+        const id = m.icaoId || m.station_id || m.stationId;
+        if (id) {
+          metarData[id] = m;
           fetched++;
         }
       }
-    } catch(e) { /* silently skip batch errors */ }
+    } catch(e) {
+      errors.push(e.message);
+    }
   }
+  if (errors.length > 0) console.warn('METAR errors:', errors);
 
   // Update map source
   if (map.getSource('airports')) {
@@ -554,9 +571,11 @@ async function refreshMetar() {
   // Update UI
   const now = new Date();
   const pad = n => String(n).padStart(2,'0');
-  document.getElementById('metar-count').textContent = fetched;
+  document.getElementById('metar-count').textContent = fetched || '0';
   document.getElementById('metar-time').textContent =
-    `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} UTC`;
+    fetched > 0
+      ? `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} UTC`
+      : 'Error — check console';
 
   updateCounters();
 
