@@ -293,9 +293,8 @@
 <script>
 // ── CONFIG ──────────────────────────────────────────────
 const MAPTILER_KEY = 'BPVpXuAbKK46DodFKxyR';
-const METAR_API_BASE = 'https://aviationweather.gov/api/data/metar';
-const CORS_PROXY = 'https://corsproxy.io/?url=';
-const METAR_API = CORS_PROXY + encodeURIComponent(METAR_API_BASE);
+// METAR served from local metar.json updated by GitHub Actions every 30 min
+const METAR_JSON_URL = './metar.json';
 const METAR_REFRESH_MIN = 30;
 
 const CAT_COLORS = {
