@@ -4,85 +4,283 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Brazil Aviation Map</title>
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&family=Geist:wght@400;500;600&display=swap');
+
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0a0c10;--panel:rgba(8,12,18,0.88);--border:rgba(80,180,255,0.12);
-  --accent:#50B4FF;--vfr:#00E676;--mvfr:#448AFF;--ifr:#FF1744;--lifr:#E040FB;
-  --no-data:#37474F;--text:#b0bec5;--text-dim:#546E7A;
-  --mono:'Share Tech Mono',monospace;--ui:'Rajdhani',sans-serif;
+
+:root {
+  /* shadcn/ui dark color tokens */
+  --background:    224 71% 4%;
+  --foreground:    213 31% 91%;
+  --card:          224 71% 4%;
+  --card-fg:       213 31% 91%;
+  --border:        215 28% 17%;
+  --input:         215 28% 17%;
+  --primary:       210 40% 98%;
+  --primary-fg:    222 47% 11%;
+  --secondary:     222 47% 11%;
+  --secondary-fg:  210 40% 98%;
+  --muted:         223 47% 11%;
+  --muted-fg:      215 20% 65%;
+  --accent:        216 34% 17%;
+  --accent-fg:     210 40% 98%;
+  --ring:          216 34% 17%;
+  --radius:        0.5rem;
+
+  /* Aviation flight category */
+  --vfr:   142 76% 45%;
+  --mvfr:  213 94% 62%;
+  --ifr:   348 83% 55%;
+  --lifr:  292 76% 60%;
+
+  /* Computed */
+  --bg:       hsl(var(--background));
+  --fg:       hsl(var(--foreground));
+  --bd:       hsl(var(--border));
+  --mut:      hsl(var(--muted));
+  --mut-fg:   hsl(var(--muted-fg));
+  --card-bg:  hsla(224,71%,4%,0.85);
+  --mono:     'Geist Mono', 'Share Tech Mono', monospace;
+  --sans:     'Geist', 'Rajdhani', sans-serif;
 }
-html,body{width:100%;height:100%;background:var(--bg);overflow:hidden}
-#map{width:100%;height:100%}
 
-#topbar{
-  position:fixed;top:0;left:0;right:0;z-index:100;height:44px;
-  background:var(--panel);border-bottom:1px solid var(--border);
-  display:flex;align-items:center;backdrop-filter:blur(16px);
+html,body { width:100%; height:100%; background:var(--bg); overflow:hidden; }
+#map { width:100%; height:100%; }
+
+/* ── TOP BAR ── shadcn: border-b, bg-background/80 backdrop */
+#topbar {
+  position:fixed; top:0; left:0; right:0; z-index:100;
+  height:48px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--bd);
+  display:flex; align-items:center;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  font-family: var(--sans);
 }
-.tb-s{display:flex;align-items:center;gap:12px;padding:0 16px;height:100%;border-right:1px solid var(--border);}
-.tb-s:last-child{border-right:none;margin-left:auto}
-.logo{font-family:var(--ui);font-weight:700;font-size:13px;letter-spacing:4px;color:var(--accent);text-transform:uppercase;}
-#clock{font-family:var(--mono);font-size:12px;color:var(--text-dim);letter-spacing:1px;min-width:82px;}
-.tb-lbl{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:1px;}
-#mu-time{font-family:var(--mono);font-size:10px;color:var(--accent);}
+.tb-s {
+  display:flex; align-items:center; gap:12px;
+  padding:0 16px; height:100%;
+  border-right: 1px solid var(--bd);
+}
+.tb-s:last-child { border-right:none; margin-left:auto; }
 
-#metar-stats{position:fixed;top:54px;right:12px;z-index:100;display:flex;flex-direction:column;gap:4px;align-items:flex-end;}
-.pill{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--border);
-  border-radius:20px;padding:3px 10px 3px 6px;backdrop-filter:blur(12px);
-  font-family:var(--mono);font-size:11px;color:var(--text-dim);transition:opacity 0.4s;}
-.pill.active{opacity:1}.pill.dim{opacity:0.25}
-.pdot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
-.pnum{color:var(--text);font-size:12px;min-width:18px;text-align:right}
+.logo {
+  font-family: var(--sans);
+  font-weight: 600; font-size: 13px; letter-spacing: 0.08em;
+  color: var(--fg);
+  text-transform: uppercase;
+  user-select: none;
+}
+.logo span { color: hsl(var(--mvfr)); }
 
-#toggles{position:fixed;top:54px;left:12px;z-index:100;display:flex;flex-direction:column;gap:4px;}
-.tog{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:5px 10px;
-  font-family:var(--ui);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;
-  color:var(--text-dim);cursor:pointer;transition:all 0.15s;backdrop-filter:blur(12px);}
-.tog.on{border-color:rgba(80,180,255,0.4);color:var(--accent);background:rgba(80,180,255,0.06);}
-.tog:hover{border-color:rgba(80,180,255,0.3);color:var(--text);}
+#clock {
+  font-family: var(--mono);
+  font-size: 12px; color: var(--mut-fg);
+  letter-spacing: 0.05em; min-width: 86px;
+}
 
-#loading{position:fixed;inset:0;z-index:300;background:var(--bg);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;transition:opacity 0.8s;}
-#loading.gone{opacity:0;pointer-events:none}
-.ld-logo{font-family:var(--ui);font-size:22px;font-weight:700;letter-spacing:6px;color:var(--accent);}
-.ld-sub{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:2px;}
-.ld-bar{width:160px;height:1px;background:rgba(80,180,255,0.1);overflow:hidden;}
-.ld-fill{height:100%;background:var(--accent);animation:ldp 2.5s ease forwards;}
-@keyframes ldp{from{width:0}to{width:100%}}
+.tb-label {
+  font-family: var(--mono);
+  font-size: 10px; color: var(--mut-fg);
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
 
-.maplibregl-popup-content{background:rgba(8,12,18,0.95)!important;border:1px solid var(--border)!important;
-  border-radius:6px!important;padding:0!important;color:var(--text)!important;font-family:var(--ui)!important;
-  backdrop-filter:blur(16px);min-width:210px;box-shadow:0 12px 40px rgba(0,0,0,0.7)!important;}
-.maplibregl-popup-tip{display:none!important}
-.maplibregl-popup-close-button{color:var(--text-dim)!important;font-size:14px!important;right:8px!important;top:8px!important;}
-.ph{padding:10px 14px 6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
-.pdot2{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.picao{font-size:16px;font-weight:700;letter-spacing:2px;color:#fff;}
-.pcat{margin-left:auto;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:1px;padding:2px 7px;border-radius:3px;color:#fff;}
-.pname{font-size:10px;color:var(--text-dim);letter-spacing:0.5px;text-transform:uppercase;padding:4px 14px 0;}
-.pbody{padding:6px 14px 10px;}
-.prow{display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:2px 0;border-bottom:1px solid rgba(80,180,255,0.05);}
-.prow:last-child{border-bottom:none}
-.plbl{color:var(--text-dim);font-weight:500;}
-.pval{font-family:var(--mono);font-size:10px;color:var(--text);}
-.praw{padding:6px 14px 10px;border-top:1px solid var(--border);font-family:var(--mono);font-size:9px;color:var(--text-dim);line-height:1.5;word-break:break-all;}
-.maplibregl-ctrl-bottom-right{bottom:16px!important;right:16px!important}
+#mu-time {
+  font-family: var(--mono);
+  font-size: 11px; color: hsl(var(--mvfr));
+  letter-spacing: 0.05em;
+}
+
+/* ── BUTTONS — shadcn variant: outline ── */
+.tog {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--bd);
+  border-radius: calc(var(--radius) - 2px);
+  font-family: var(--sans);
+  font-size: 11px; font-weight: 500; letter-spacing: 0.04em;
+  color: var(--mut-fg);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  outline: none;
+}
+.tog:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-fg));
+  border-color: hsl(var(--ring));
+}
+.tog.on {
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-fg));
+  border-color: hsl(var(--border));
+}
+.tog.refresh {
+  border-color: hsl(var(--mvfr) / 0.5);
+  color: hsl(var(--mvfr));
+}
+.tog.refresh:hover { background: hsl(var(--mvfr) / 0.1); }
+
+/* ── METAR BADGES — shadcn: badge outline variant ── */
+#metar-stats {
+  position:fixed; top:60px; right:14px; z-index:100;
+  display:flex; flex-direction:column; gap:3px;
+  align-items:flex-end;
+}
+.badge {
+  display:inline-flex; align-items:center; gap:6px;
+  padding: 3px 9px 3px 7px;
+  background: var(--card-bg);
+  border: 1px solid var(--bd);
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+  font-family: var(--mono);
+  font-size: 10px; letter-spacing: 0.04em;
+  color: var(--mut-fg);
+  transition: opacity 0.3s, border-color 0.3s;
+  user-select: none;
+}
+.badge.dim { opacity: 0.25; }
+.badge.active { opacity: 1; }
+.badge.active.vfr  { border-color: hsl(var(--vfr)  / 0.4); color: hsl(var(--vfr)); }
+.badge.active.mvfr { border-color: hsl(var(--mvfr) / 0.4); color: hsl(var(--mvfr)); }
+.badge.active.ifr  { border-color: hsl(var(--ifr)  / 0.4); color: hsl(var(--ifr)); }
+.badge.active.lifr { border-color: hsl(var(--lifr) / 0.4); color: hsl(var(--lifr)); }
+.bdot { width: 6px; height: 6px; border-radius: 50%; flex-shrink:0; }
+.bnum { min-width: 16px; text-align: right; font-size: 11px; }
+
+/* ── LOADING ── */
+#loading {
+  position:fixed; inset:0; z-index:300;
+  background: var(--bg);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:12px;
+  transition: opacity 0.6s;
+}
+#loading.gone { opacity:0; pointer-events:none; }
+.ld-logo {
+  font-family: var(--sans);
+  font-size: 18px; font-weight: 600; letter-spacing: 0.15em;
+  color: var(--fg); text-transform: uppercase;
+}
+.ld-logo span { color: hsl(var(--mvfr)); }
+.ld-sub {
+  font-family: var(--mono);
+  font-size: 10px; color: var(--mut-fg); letter-spacing: 0.08em;
+}
+.ld-bar {
+  width: 120px; height: 1px;
+  background: var(--bd); overflow: hidden; border-radius: 1px;
+}
+.ld-fill {
+  height: 100%; background: hsl(var(--mvfr));
+  animation: ldp 2.2s ease forwards;
+}
+@keyframes ldp { from{width:0} to{width:100%} }
+
+/* ── POPUP — shadcn: Card ── */
+.maplibregl-popup-content {
+  background: hsla(224,71%,4%,0.97) !important;
+  border: 1px solid var(--bd) !important;
+  border-radius: var(--radius) !important;
+  padding: 0 !important;
+  color: var(--fg) !important;
+  font-family: var(--sans) !important;
+  backdrop-filter: blur(16px);
+  min-width: 220px;
+  box-shadow: 0 8px 30px hsla(224,71%,4%,0.8) !important;
+}
+.maplibregl-popup-tip { display:none !important; }
+.maplibregl-popup-close-button {
+  color: var(--mut-fg) !important;
+  font-size: 14px !important;
+  right: 10px !important; top: 10px !important;
+}
+
+/* Card Header */
+.ph {
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--bd);
+  display:flex; align-items:center; gap:8px;
+}
+.pdot2 { width: 9px; height: 9px; border-radius: 50%; flex-shrink:0; }
+.picao {
+  font-size: 15px; font-weight: 600; letter-spacing: 0.1em;
+  color: var(--fg);
+}
+.pcat {
+  margin-left:auto;
+  font-family: var(--mono);
+  font-size: 10px; font-weight: 500; letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1px solid currentColor;
+  opacity: 0.9;
+}
+.pname {
+  font-size: 10px; color: var(--mut-fg);
+  letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 5px 14px 2px;
+}
+.pbody { padding: 6px 14px 12px; }
+.prow {
+  display:flex; justify-content:space-between; align-items:center;
+  font-size: 11px; padding: 3px 0;
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+}
+.prow:last-child { border-bottom: none; }
+.plbl { color: var(--mut-fg); font-weight: 500; }
+.pval { font-family: var(--mono); font-size: 10px; color: var(--fg); }
+.praw {
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--bd);
+  font-family: var(--mono);
+  font-size: 9px; color: var(--mut-fg); line-height: 1.6;
+  word-break: break-all;
+}
+
+/* MapLibre controls */
+.maplibregl-ctrl-bottom-right { bottom:16px !important; right:16px !important; }
+.maplibregl-ctrl-group {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--bd) !important;
+  border-radius: var(--radius) !important;
+  backdrop-filter: blur(8px);
+  box-shadow: none !important;
+}
+.maplibregl-ctrl-group button {
+  background: transparent !important;
+  color: var(--mut-fg) !important;
+}
+.maplibregl-ctrl-group button:hover {
+  background: hsl(var(--accent)) !important;
+}
+.maplibregl-ctrl-scale {
+  background: var(--card-bg) !important;
+  border-color: var(--bd) !important;
+  color: var(--mut-fg) !important;
+  font-family: var(--mono) !important;
+  font-size: 9px !important;
+  backdrop-filter: blur(8px);
+}
 </style>
 </head>
 <body>
 
 <div id="loading">
-  <div class="ld-logo">Brazil AV</div>
+  <div class="ld-logo">Brazil<span>AV</span></div>
   <div class="ld-sub">Loading aviation data</div>
   <div class="ld-bar"><div class="ld-fill"></div></div>
 </div>
 
 <div id="topbar">
-  <div class="tb-s"><div class="logo">BrazilAV</div></div>
+  <div class="tb-s"><div class="logo">Brazil<span>AV</span></div></div>
   <div class="tb-s"><div id="clock">--:--:-- UTC</div></div>
   <div class="tb-s">
     <div class="tb-lbl">METAR</div>
@@ -92,15 +290,15 @@ html,body{width:100%;height:100%;background:var(--bg);overflow:hidden}
     <button class="tog on" id="btn-airports" onclick="tog('airports')">✈ Airports</button>
     <button class="tog on" id="btn-airspaces" onclick="tog('airspaces')">⬡ Airspaces</button>
     <button class="tog on" id="btn-aeroway" onclick="tog('aeroway')">⊞ Aeroway</button>
-    <button class="tog" style="border-color:rgba(80,180,255,0.3);color:var(--accent)" onclick="refreshMetar()">↺ METAR</button>
+    <button class="tog refresh" onclick="refreshMetar()">↺ METAR</button>
   </div>
 </div>
 
 <div id="metar-stats">
-  <div class="pill dim" id="pill-vfr"><div class="pdot" style="background:var(--vfr)"></div><span class="pnum" id="c-vfr">0</span>VFR</div>
-  <div class="pill dim" id="pill-mvfr"><div class="pdot" style="background:var(--mvfr)"></div><span class="pnum" id="c-mvfr">0</span>MVFR</div>
-  <div class="pill dim" id="pill-ifr"><div class="pdot" style="background:var(--ifr)"></div><span class="pnum" id="c-ifr">0</span>IFR</div>
-  <div class="pill dim" id="pill-lifr"><div class="pdot" style="background:var(--lifr)"></div><span class="pnum" id="c-lifr">0</span>LIFR</div>
+  <div class="badge dim vfr" id="pill-vfr"><div class="bdot" style="background:hsl(var(--vfr))"></div><span class="bnum" id="c-vfr">0</span> VFR</div>
+  <div class="badge dim mvfr" id="pill-mvfr"><div class="bdot" style="background:hsl(var(--mvfr))"></div><span class="bnum" id="c-mvfr">0</span> MVFR</div>
+  <div class="badge dim ifr" id="pill-ifr"><div class="bdot" style="background:hsl(var(--ifr))"></div><span class="bnum" id="c-ifr">0</span> IFR</div>
+  <div class="badge dim lifr" id="pill-lifr"><div class="bdot" style="background:hsl(var(--lifr))"></div><span class="bnum" id="c-lifr">0</span> LIFR</div>
 </div>
 
 <div id="toggles"></div>
@@ -114,7 +312,7 @@ const G={
   thresholds:'https://gist.githubusercontent.com/PedroPacox/42ea490181412a481135391668d5fbd8/raw/br_rwy_thresholds.geojson',
   stripes:'https://gist.githubusercontent.com/PedroPacox/664c38fd0a2463208013d0b987804ee9/raw/br_rwy_stripes.geojson',
 };
-const CAT={VFR:'#00E676',MVFR:'#448AFF',IFR:'#FF1744',LIFR:'#E040FB',null:'#37474F'};
+const CAT={VFR:'hsl(142,76%,45%)',MVFR:'hsl(213,94%,62%)',IFR:'hsl(348,83%,55%)',LIFR:'hsl(292,76%,60%)',null:'hsl(215,20%,30%)'};
 
 setInterval(()=>{const n=new Date(),p=x=>String(x).padStart(2,'0');
   document.getElementById('clock').textContent=`${p(n.getUTCHours())}:${p(n.getUTCMinutes())}:${p(n.getUTCSeconds())} UTC`;},1000);
@@ -190,7 +388,7 @@ const STYLE={version:8,name:'BrazilAV',
     // Gates
     {id:'gate-dot',type:'circle',source:'openmaptiles','source-layer':'aeroway',minzoom:14,
       filter:['==','class','gate'],layout:{'visibility':'visible'},
-      paint:{'circle-color':'#FF8C00','circle-radius':{'interpolate':['linear',['zoom'],14,3,18,6]},
+      paint:{'circle-color':'#FF8C00','circle-radius':{'stops':[[14,3],[18,6]]},
         'circle-stroke-color':'rgba(255,255,255,0.8)','circle-stroke-width':1}},
     {id:'gate-label',type:'symbol',source:'openmaptiles','source-layer':'aeroway',minzoom:15,
       filter:['==','class','gate'],
@@ -289,13 +487,18 @@ map.on('load',async()=>{
 
   // Airport dots
   map.addLayer({id:'apt-glow',type:'circle',source:'airports',minzoom:4,
-    paint:{'circle-color':['get','cc'],'circle-radius':{'interpolate':['linear',['zoom'],4,8,8,14,12,20]},'circle-opacity':0.1,'circle-blur':1.5}});
+    paint:{'circle-color':['get','cc'],
+      'circle-radius':{'base':1.5,'stops':[[4,8],[8,14],[12,20]]},
+      'circle-opacity':0.1,'circle-blur':1.5}});
   map.addLayer({id:'apt-dot',type:'circle',source:'airports',minzoom:4,
-    paint:{'circle-color':['get','cc'],'circle-radius':{'interpolate':['linear',['zoom'],4,4,8,6,12,9]},
-      'circle-stroke-color':'rgba(255,255,255,0.7)','circle-stroke-width':{'interpolate':['linear',['zoom'],4,0.5,8,1,12,1.5]},'circle-opacity':0.95}});
+    paint:{'circle-color':['get','cc'],
+      'circle-radius':{'base':1.5,'stops':[[4,4],[8,6],[12,9]]},
+      'circle-stroke-color':'rgba(255,255,255,0.7)',
+      'circle-stroke-width':{'stops':[[4,0.5],[8,1],[12,1.5]]},
+      'circle-opacity':0.95}});
   map.addLayer({id:'apt-label',type:'symbol',source:'airports',minzoom:6,
     layout:{'text-field':['get','icaoCode'],'text-font':['Metropolis Regular','Noto Sans Regular'],
-      'text-size':{'interpolate':['linear',['zoom'],6,9,10,11,14,13]},'text-offset':[0,1.4],'text-anchor':'top'},
+      'text-size':{'stops':[[6,9],[10,11],[14,13]]},'text-offset':[0,1.4],'text-anchor':'top'},
     paint:{'text-color':['get','cc'],'text-halo-color':'rgba(0,0,0,0.9)','text-halo-width':1.5}});
 
   await refreshMetar();
@@ -338,6 +541,7 @@ function updateStats(){
     document.getElementById('c-'+k).textContent=n;
     const el=document.getElementById('pill-'+k);
     el.classList.toggle('active',n>0);el.classList.toggle('dim',n===0);
+    // shadcn badge color activation handled by CSS .active.vfr etc.
   });
 }
 
