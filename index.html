@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brazil Aviation Map</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0c10;
+      --panel: rgba(10,14,20,0.92);
+      --border: rgba(80,180,255,0.15);
+      --accent: #50B4FF;
+      --vfr: #00E676;
+      --mvfr: #448AFF;
+      --ifr: #FF1744;
+      --lifr: #E040FB;
+      --unknown: #546E7A;
+      --text: #cdd6e0;
+      --text-dim: #546E7A;
+      --font-mono: 'Share Tech Mono', monospace;
+      --font-ui: 'Rajdhani', sans-serif;
+    }
+
+    html, body { width: 100%; height: 100%; background: var(--bg); overflow: hidden; }
+
+    #map { width: 100%; height: 100%; }
+
+    /* ── TOP BAR ── */
+    #topbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      height: 48px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 16px;
+      padding: 0 16px;
+      backdrop-filter: blur(12px);
+    }
+
+    #topbar .logo {
+      font-family: var(--font-ui);
+      font-weight: 700; font-size: 16px; letter-spacing: 3px;
+      color: var(--accent);
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    #topbar .sep { width: 1px; height: 24px; background: var(--border); }
+
+    #clock {
+      font-family: var(--font-mono);
+      font-size: 13px; color: var(--text-dim);
+      letter-spacing: 1px;
+    }
+
+    #metar-status {
+      font-family: var(--font-mono);
+      font-size: 11px; color: var(--text-dim);
+      margin-left: auto;
+    }
+
+    #metar-status span { color: var(--accent); }
+
+    /* ── LEGEND ── */
+    #legend {
+      position: fixed; bottom: 24px; left: 16px; z-index: 100;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      backdrop-filter: blur(12px);
+      font-family: var(--font-ui);
+    }
+
+    #legend h4 {
+      font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--text-dim); margin-bottom: 10px; font-weight: 600;
+    }
+
+    .legend-item {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: var(--text);
+      margin-bottom: 6px; font-weight: 500;
+    }
+
+    .legend-item:last-child { margin-bottom: 0; }
+
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      flex-shrink: 0; border: 1.5px solid rgba(255,255,255,0.3);
+    }
+
+    /* ── TOGGLES ── */
+    #toggles {
+      position: fixed; top: 64px; right: 16px; z-index: 100;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+
+    .toggle-btn {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-family: var(--font-ui);
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s;
+      backdrop-filter: blur(12px);
+      white-space: nowrap;
+    }
+
+    .toggle-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(80,180,255,0.08);
+    }
+
+    .toggle-btn:hover { border-color: rgba(80,180,255,0.4); color: var(--text); }
+
+    /* ── POPUP ── */
+    .maplibregl-popup-content {
+      background: var(--panel) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 6px !important;
+      padding: 0 !important;
+      color: var(--text) !important;
+      font-family: var(--font-ui) !important;
+      backdrop-filter: blur(12px);
+      min-width: 220px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+    }
+
+    .maplibregl-popup-tip { display: none !important; }
+    .maplibregl-popup-close-button {
+      color: var(--text-dim) !important;
+      font-size: 16px !important;
+      right: 8px !important; top: 8px !important;
+    }
+
+    .popup-header {
+      padding: 12px 16px 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .popup-cat-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .popup-icao {
+      font-size: 18px; font-weight: 700; letter-spacing: 2px;
+      color: #fff;
+    }
+
+    .popup-name {
+      font-size: 11px; color: var(--text-dim);
+      letter-spacing: 0.5px; text-transform: uppercase;
+      padding: 0 16px 4px;
+    }
+
+    .popup-body { padding: 8px 16px 12px; }
+
+    .popup-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; padding: 3px 0;
+      border-bottom: 1px solid rgba(80,180,255,0.06);
+    }
+
+    .popup-row:last-child { border-bottom: none; }
+    .popup-label { color: var(--text-dim); font-weight: 500; }
+    .popup-value { color: var(--text); font-family: var(--font-mono); font-size: 11px; }
+
+    .popup-raw {
+      padding: 8px 16px 12px;
+      border-top: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 10px; color: var(--text-dim);
+      line-height: 1.5;
+      word-break: break-all;
+    }
+
+    .cat-badge {
+      display: inline-block;
+      padding: 2px 8px; border-radius: 3px;
+      font-size: 11px; font-weight: 700; letter-spacing: 1px;
+      color: #fff;
+    }
+
+    /* ── LOADING ── */
+    #loading {
+      position: fixed; inset: 0; z-index: 200;
+      background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px;
+      transition: opacity 0.6s;
+    }
+
+    #loading.hidden { opacity: 0; pointer-events: none; }
+
+    #loading .load-logo {
+      font-family: var(--font-ui);
+      font-size: 28px; font-weight: 700; letter-spacing: 6px;
+      color: var(--accent); text-transform: uppercase;
+    }
+
+    #loading .load-sub {
+      font-family: var(--font-mono);
+      font-size: 11px; color: var(--text-dim); letter-spacing: 2px;
+    }
+
+    .load-bar {
+      width: 200px; height: 2px;
+      background: rgba(80,180,255,0.1);
+      border-radius: 2px; overflow: hidden;
+    }
+
+    .load-bar-inner {
+      height: 100%; width: 0;
+      background: var(--accent);
+      border-radius: 2px;
+      animation: loadprog 2s ease forwards;
+    }
+
+    @keyframes loadprog { to { width: 100%; } }
+
+    /* ── METAR COUNTER ── */
+    #counter {
+      position: fixed; bottom: 24px; right: 16px; z-index: 100;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: var(--font-mono);
+      font-size: 11px; color: var(--text-dim);
+      backdrop-filter: blur(12px);
+      text-align: right;
+      line-height: 1.8;
+    }
+
+    #counter .count-row { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+    #counter .count-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="load-logo">Brazil AV Map</div>
+  <div class="load-sub">Initializing · Loading METAR data</div>
+  <div class="load-bar"><div class="load-bar-inner"></div></div>
+</div>
+
+<div id="topbar">
+  <div class="logo">Brazil AV</div>
+  <div class="sep"></div>
+  <div id="clock">--:--:-- UTC</div>
+  <div id="metar-status">METAR <span id="metar-count">—</span> stations · Updated <span id="metar-time">—</span></div>
+</div>
+
+<div id="map"></div>
+
+<div id="toggles">
+  <button class="toggle-btn active" id="btn-airports" onclick="toggleLayer('airports')">✈ Airports</button>
+  <button class="toggle-btn active" id="btn-airspaces" onclick="toggleLayer('airspaces')">⬡ Airspaces</button>
+  <button class="toggle-btn active" id="btn-aeroway" onclick="toggleLayer('aeroway')">⊞ Aeroway</button>
+  <button class="toggle-btn" id="btn-metar" onclick="refreshMetar()">↺ Refresh METAR</button>
+</div>
+
+<div id="legend">
+  <h4>Flight Category</h4>
+  <div class="legend-item"><div class="dot" style="background:var(--vfr)"></div>VFR &nbsp;>5SM, >3000ft</div>
+  <div class="legend-item"><div class="dot" style="background:var(--mvfr)"></div>MVFR 3-5SM, 1000-3000ft</div>
+  <div class="legend-item"><div class="dot" style="background:var(--ifr)"></div>IFR &nbsp;1-3SM, 500-1000ft</div>
+  <div class="legend-item"><div class="dot" style="background:var(--lifr)"></div>LIFR <1SM, <500ft</div>
+  <div class="legend-item"><div class="dot" style="background:var(--unknown)"></div>No METAR</div>
+</div>
+
+<div id="counter">
+  <div class="count-row"><div class="count-dot" style="background:var(--vfr)"></div><span id="c-vfr">0</span> VFR</div>
+  <div class="count-row"><div class="count-dot" style="background:var(--mvfr)"></div><span id="c-mvfr">0</span> MVFR</div>
+  <div class="count-row"><div class="count-dot" style="background:var(--ifr)"></div><span id="c-ifr">0</span> IFR</div>
+  <div class="count-row"><div class="count-dot" style="background:var(--lifr)"></div><span id="c-lifr">0</span> LIFR</div>
+</div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────
+const MAPTILER_KEY = 'BPVpXuAbKK46DodFKxyR';
+const METAR_API = 'https://aviationweather.gov/api/data/metar';
+const METAR_REFRESH_MIN = 30;
+
+const CAT_COLORS = {
+  VFR:  '#00E676',
+  MVFR: '#448AFF',
+  IFR:  '#FF1744',
+  LIFR: '#E040FB',
+  null: '#546E7A'
+};
+
+// ── STYLE ────────────────────────────────────────────────
+// Inlined from your dark-matter-aviation.json
+// Replace the placeholder Gist URLs below with your actual ones
+
+const MAP_STYLE_URL = 'INLINE'; // we build inline below
+
+// ── CLOCK ────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('clock').textContent =
+    `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── MAP INIT ─────────────────────────────────────────────
+const map = new maplibregl.Map({
+  container: 'map',
+  style: `https://api.maptiler.com/maps/darkmatter/style.json?key=${MAPTILER_KEY}`,
+  center: [-52, -15],
+  zoom: 4.5,
+  minZoom: 3,
+  maxZoom: 18,
+  attributionControl: false
+});
+
+map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+
+// Airports data cache
+let airportsGeoJSON = null;
+let metarData = {}; // icao -> metar object
+
+// ── MAP LOAD ─────────────────────────────────────────────
+map.on('load', async () => {
+  // Load airports GeoJSON
+  try {
+    const res = await fetch('https://gist.githubusercontent.com/PedroPacox/d9db8b0feccfa7c330e1c48357cf459b/raw/br_apt_sb.geojson');
+    airportsGeoJSON = await res.json();
+  } catch(e) {
+    console.error('Failed to load airports', e);
+    airportsGeoJSON = { type: 'FeatureCollection', features: [] };
+  }
+
+  // Load airspaces
+  let airspacesGeoJSON = { type: 'FeatureCollection', features: [] };
+  try {
+    const res = await fetch('https://gist.githubusercontent.com/PedroPacox/afec8b6747e106539817172f693c8b40/raw/b428fee077832a5543dc8b1ab7c3eba4e819522d/br_asp.geojson');
+    airspacesGeoJSON = await res.json();
+  } catch(e) { console.warn('Airspaces not loaded'); }
+
+  // Add sources
+  map.addSource('airports', { type: 'geojson', data: buildAirportsWithMetar() });
+  map.addSource('airspaces', { type: 'geojson', data: airspacesGeoJSON });
+
+  // ── AIRSPACE LAYERS ───────────────────────────────────
+  map.addLayer({
+    id: 'airspaces-fill',
+    type: 'fill',
+    source: 'airspaces',
+    minzoom: 4,
+    paint: {
+      'fill-color': ['match', ['get','type'],
+        0,'#FF4444', 1,'#FF4444',
+        2,'#4488FF', 3,'#4488FF',
+        4,'#FF8C00', 5,'#FF8C00',
+        6,'#AA44FF', 8,'#00CCAA',
+        '#888888'],
+      'fill-opacity': 0.18
+    }
+  });
+
+  map.addLayer({
+    id: 'airspaces-border',
+    type: 'line',
+    source: 'airspaces',
+    minzoom: 4,
+    paint: {
+      'line-color': ['match', ['get','type'],
+        0,'#FF6666', 1,'#FF6666',
+        2,'#66AAFF', 3,'#66AAFF',
+        4,'#FFAA33', 5,'#FFAA33',
+        6,'#CC66FF', 8,'#33DDBB',
+        '#AAAAAA'],
+      'line-width': 1.2,
+      'line-opacity': 0.7
+    }
+  });
+
+  // ── AIRPORT LAYERS ────────────────────────────────────
+  // Glow ring
+  map.addLayer({
+    id: 'airports-glow',
+    type: 'circle',
+    source: 'airports',
+    minzoom: 4,
+    paint: {
+      'circle-color': ['get','catColor'],
+      'circle-radius': ['interpolate',['linear'],['zoom'], 4,8, 8,12, 12,18],
+      'circle-opacity': 0.12,
+      'circle-blur': 1
+    }
+  });
+
+  // Main dot
+  map.addLayer({
+    id: 'airports-dot',
+    type: 'circle',
+    source: 'airports',
+    minzoom: 4,
+    paint: {
+      'circle-color': ['get','catColor'],
+      'circle-radius': ['interpolate',['linear'],['zoom'], 4,4, 8,6, 12,9],
+      'circle-stroke-color': 'rgba(255,255,255,0.8)',
+      'circle-stroke-width': ['interpolate',['linear'],['zoom'], 4,0.5, 8,1, 12,1.5],
+      'circle-opacity': 0.95
+    }
+  });
+
+  // ICAO label
+  map.addLayer({
+    id: 'airports-label',
+    type: 'symbol',
+    source: 'airports',
+    minzoom: 6,
+    layout: {
+      'text-field': ['get','icaoCode'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': ['interpolate',['linear'],['zoom'], 6,9, 10,11, 14,13],
+      'text-offset': [0, 1.4],
+      'text-anchor': 'top'
+    },
+    paint: {
+      'text-color': ['get','catColor'],
+      'text-halo-color': 'rgba(0,0,0,0.9)',
+      'text-halo-width': 1.5
+    }
+  });
+
+  // ── FETCH METAR ───────────────────────────────────────
+  await refreshMetar();
+
+  // Hide loading
+  setTimeout(() => {
+    document.getElementById('loading').classList.add('hidden');
+  }, 800);
+
+  // Auto-refresh every 30 min
+  setInterval(refreshMetar, METAR_REFRESH_MIN * 60 * 1000);
+});
+
+// ── METAR FETCH ──────────────────────────────────────────
+async function refreshMetar() {
+  const btn = document.getElementById('btn-metar');
+  btn.textContent = '↺ Loading…';
+  btn.disabled = true;
+
+  if (!airportsGeoJSON) {
+    btn.textContent = '↺ Refresh METAR';
+    btn.disabled = false;
+    return;
+  }
+
+  const icaos = airportsGeoJSON.features.map(f => f.properties.icaoCode).filter(Boolean);
+
+  // Aviation Weather API — free, no key needed
+  // Split into batches of 50 (API limit per request)
+  const BATCH = 50;
+  const batches = [];
+  for (let i = 0; i < icaos.length; i += BATCH) {
+    batches.push(icaos.slice(i, i + BATCH));
+  }
+
+  metarData = {};
+  let fetched = 0;
+
+  for (const batch of batches) {
+    try {
+      const ids = batch.join(',');
+      const url = `${METAR_API}?ids=${ids}&format=json&hours=2`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const m of data) {
+        if (m.icaoId) {
+          metarData[m.icaoId] = m;
+          fetched++;
+        }
+      }
+    } catch(e) { /* silently skip batch errors */ }
+  }
+
+  // Update map source
+  if (map.getSource('airports')) {
+    map.getSource('airports').setData(buildAirportsWithMetar());
+  }
+
+  // Update UI
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('metar-count').textContent = fetched;
+  document.getElementById('metar-time').textContent =
+    `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} UTC`;
+
+  updateCounters();
+
+  btn.textContent = '↺ Refresh METAR';
+  btn.disabled = false;
+}
+
+function buildAirportsWithMetar() {
+  if (!airportsGeoJSON) return { type:'FeatureCollection', features:[] };
+  return {
+    type: 'FeatureCollection',
+    features: airportsGeoJSON.features.map(f => {
+      const icao = f.properties.icaoCode;
+      const metar = metarData[icao];
+      const cat = metar?.flightCategory || null;
+      return {
+        ...f,
+        properties: {
+          ...f.properties,
+          flightCategory: cat,
+          catColor: CAT_COLORS[cat] || CAT_COLORS[null],
+          windDir: metar?.wdir ?? null,
+          windSpd: metar?.wspd ?? null,
+          visibility: metar?.visib ?? null,
+          temp: metar?.temp ?? null,
+          dewp: metar?.dewp ?? null,
+          altimeter: metar?.altim ?? null,
+          rawMetar: metar?.rawOb ?? null,
+          clouds: metar?.clouds ? metar.clouds.map(c => `${c.cover}${c.base ? ' '+c.base+'ft' : ''}`).join(' ') : null
+        }
+      };
+    })
+  };
+}
+
+function updateCounters() {
+  const counts = { VFR:0, MVFR:0, IFR:0, LIFR:0 };
+  for (const m of Object.values(metarData)) {
+    if (m.flightCategory && counts[m.flightCategory] !== undefined) {
+      counts[m.flightCategory]++;
+    }
+  }
+  document.getElementById('c-vfr').textContent = counts.VFR;
+  document.getElementById('c-mvfr').textContent = counts.MVFR;
+  document.getElementById('c-ifr').textContent = counts.IFR;
+  document.getElementById('c-lifr').textContent = counts.LIFR;
+}
+
+// ── POPUP ────────────────────────────────────────────────
+const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '280px', offset: 10 });
+
+map.on('click', 'airports-dot', (e) => {
+  const p = e.features[0].properties;
+  const cat = p.flightCategory || 'N/A';
+  const catColor = p.catColor || '#546E7A';
+
+  const windStr = p.windDir != null && p.windSpd != null
+    ? `${String(p.windDir).padStart(3,'0')}° / ${p.windSpd}kt`
+    : 'N/A';
+
+  const visStr = p.visibility != null ? `${p.visibility} SM` : 'N/A';
+  const tempStr = p.temp != null ? `${p.temp}°C / DP ${p.dewp ?? '—'}°C` : 'N/A';
+  const altStr = p.altimeter != null ? `${(p.altimeter * 0.02953).toFixed(2)} inHg` : 'N/A';
+  const elev = p.elevation ? `${p.elevation.value} m` : 'N/A';
+
+  const html = `
+    <div class="popup-header">
+      <div class="popup-cat-dot" style="background:${catColor}"></div>
+      <div>
+        <div class="popup-icao">${p.icaoCode}</div>
+      </div>
+      <span class="cat-badge" style="background:${catColor};margin-left:auto">${cat}</span>
+    </div>
+    <div class="popup-name">${p.name || ''}</div>
+    <div class="popup-body">
+      <div class="popup-row"><span class="popup-label">Wind</span><span class="popup-value">${windStr}</span></div>
+      <div class="popup-row"><span class="popup-label">Visibility</span><span class="popup-value">${visStr}</span></div>
+      <div class="popup-row"><span class="popup-label">Clouds</span><span class="popup-value">${p.clouds || 'N/A'}</span></div>
+      <div class="popup-row"><span class="popup-label">Temp / DP</span><span class="popup-value">${tempStr}</span></div>
+      <div class="popup-row"><span class="popup-label">Altimeter</span><span class="popup-value">${altStr}</span></div>
+      <div class="popup-row"><span class="popup-label">Elevation</span><span class="popup-value">${elev}</span></div>
+    </div>
+    ${p.rawMetar ? `<div class="popup-raw">${p.rawMetar}</div>` : ''}
+  `;
+
+  popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+});
+
+map.on('mouseenter', 'airports-dot', () => map.getCanvas().style.cursor = 'pointer');
+map.on('mouseleave', 'airports-dot', () => map.getCanvas().style.cursor = '');
+
+// ── LAYER TOGGLES ────────────────────────────────────────
+const layerGroups = {
+  airports: ['airports-glow','airports-dot','airports-label'],
+  airspaces: ['airspaces-fill','airspaces-border'],
+  aeroway: [] // handled separately — these come from the base style
+};
+
+const layerState = { airports: true, airspaces: true, aeroway: true };
+
+function toggleLayer(group) {
+  layerState[group] = !layerState[group];
+  const btn = document.getElementById(`btn-${group}`);
+  btn.classList.toggle('active', layerState[group]);
+  const vis = layerState[group] ? 'visible' : 'none';
+
+  if (group === 'aeroway') {
+    // Toggle aeroway layers from base style
+    ['aeroway-taxiway-casing','aeroway-taxiway','aeroway-runway-casing',
+     'aeroway-area','aeroway-runway','aeroway-runway-centerline',
+     'aeroway-taxiway-centerline','aeroway-taxiway-label',
+     'aeroway-gate','aeroway-gate-label'].forEach(id => {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+    });
+    return;
+  }
+
+  for (const id of layerGroups[group]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  }
+}
+</script>
+</body>
+</html>
