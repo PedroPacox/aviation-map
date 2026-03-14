@@ -292,7 +292,7 @@
 
 <script>
 // ── CONFIG ──────────────────────────────────────────────
-const MAPTILER_KEY = 'BPVpXuAbKK46DodFKxyR';
+const MAPTILER_KEY = 'get_your_own_OpIi9ZULNHzrESv6T2vL';
 const METAR_API = 'https://aviationweather.gov/api/data/metar';
 const METAR_REFRESH_MIN = 30;
 
@@ -306,7 +306,6 @@ const CAT_COLORS = {
 
 // ── STYLE ────────────────────────────────────────────────
 // Inlined from your dark-matter-aviation.json
-// Replace the placeholder Gist URLs below with your actual ones
 
 const MAP_STYLE_URL = 'INLINE'; // we build inline below
 
@@ -359,6 +358,56 @@ map.on('load', async () => {
   // Add sources
   map.addSource('airports', { type: 'geojson', data: buildAirportsWithMetar() });
   map.addSource('airspaces', { type: 'geojson', data: airspacesGeoJSON });
+
+  // Load runway thresholds
+  let thresholdsGeoJSON = { type: 'FeatureCollection', features: [] };
+  try {
+    const rth = await fetch('https://gist.githubusercontent.com/PedroPacox/42ea490181412a481135391668d5fbd8/raw/br_rwy_thresholds.geojson');
+    thresholdsGeoJSON = await rth.json();
+  } catch(e) { console.warn('Thresholds not loaded'); }
+
+  // Load runway stripes
+  let stripesGeoJSON = { type: 'FeatureCollection', features: [] };
+  try {
+    const rst = await fetch('https://gist.githubusercontent.com/PedroPacox/664c38fd0a2463208013d0b987804ee9/raw/br_rwy_stripes.geojson');
+    stripesGeoJSON = await rst.json();
+  } catch(e) { console.warn('Stripes not loaded'); }
+
+  map.addSource('rwy-thresholds', { type: 'geojson', data: thresholdsGeoJSON });
+  map.addSource('rwy-stripes', { type: 'geojson', data: stripesGeoJSON });
+
+  // ── RUNWAY STRIPE LAYERS ─────────────────────────────
+  map.addLayer({
+    id: 'rwy-stripes-fill',
+    type: 'fill',
+    source: 'rwy-stripes',
+    minzoom: 12,
+    layout: { visibility: 'visible' },
+    paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.9 }
+  });
+
+  map.addLayer({
+    id: 'rwy-threshold-label',
+    type: 'symbol',
+    source: 'rwy-thresholds',
+    minzoom: 11,
+    layout: {
+      'text-field': ['get', 'designator'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': ['interpolate',['linear'],['zoom'], 11,10, 13,13, 16,16],
+      'text-rotation-alignment': 'map',
+      'text-pitch-alignment': 'map',
+      'text-rotate': ['get', 'heading'],
+      'text-offset': [0, -2.5],
+      'text-anchor': 'center',
+      'visibility': 'visible'
+    },
+    paint: {
+      'text-color': '#ffffff',
+      'text-halo-color': 'rgba(0,0,0,0.9)',
+      'text-halo-width': 1.5
+    }
+  });
 
   // ── AIRSPACE LAYERS ───────────────────────────────────
   map.addLayer({
@@ -619,7 +668,8 @@ function toggleLayer(group) {
     ['aeroway-taxiway-casing','aeroway-taxiway','aeroway-runway-casing',
      'aeroway-area','aeroway-runway','aeroway-runway-centerline',
      'aeroway-taxiway-centerline','aeroway-taxiway-label',
-     'aeroway-gate','aeroway-gate-label'].forEach(id => {
+     'aeroway-gate','aeroway-gate-label',
+     'rwy-stripes-fill','rwy-threshold-label'].forEach(id => {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
     });
     return;
