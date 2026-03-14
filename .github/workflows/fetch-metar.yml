@@ -2,17 +2,19 @@ name: Fetch METAR Data
 
 on:
   schedule:
-    - cron: '0,30 * * * *'  # Every 30 minutes
-  workflow_dispatch:          # Manual trigger
+    - cron: '0,30 * * * *'
+  workflow_dispatch:
 
 jobs:
   fetch-metar:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Fetch METAR from Aviation Weather
+      - name: Fetch and process METAR
         run: |
           python3 << 'PYEOF'
           import urllib.request, json, time
@@ -23,67 +25,103 @@ jobs:
             "SBMO","SBRF","SBSG","SBJU","SBPJ","SBTE","SBSN","SBUR",
             "SBVT","SBGO","SBLO","SBMG","SBMK","SBUL","SBCP","SBCD",
             "SBCG","SBDO","SBPV","SBRB","SBMQ","SBLP","SBDB","SBCB",
-            "SBCR","SBCZ","SBHT","SBAT","SBIL","SBMA","SBMA","SBMD",
-            "SBME","SBMY","SBNT","SBOI","SBPC","SBPL","SBPP","SBPB",
-            "SBPN","SBPS","SBQI","SBRD","SBSC","SBSM","SBSR","SBSJ",
-            "SBTT","SBTK","SBTF","SBTB","SBTD","SBTU","SBUG","SBUY",
-            "SBVG","SBVH","SBQV","SBZM","SBKG","SBDN","SBIP","SBAM",
-            "SBAR","SBAU","SBAQ","SBAX","SBAE","SBBH","SBBP","SBBQ",
-            "SBBT","SBBU","SBCA","SBCC","SBCN","SBCJ","SBCV","SBCO",
-            "SBCP","SBEK","SBES","SBFU","SBGM","SBGP","SBGV","SBGW",
-            "SBIC","SBIH","SBJA","SBJC","SBJD","SBJF","SBJP","SBJR",
-            "SBJI","SBJV","SBLE","SBLJ","SBLN","SBLS","SBLY","SBMT",
-            "SBNM","SBPF","SBPR","SBQV","SBSB","SBSC","SBST","SBTA",
-            "SBTC","SBTV","SBTS","SBYA","SBAF","SBAN","SBAA","SBCI"
+            "SBCR","SBCZ","SBHT","SBAT","SBIL","SBMA","SBMD","SBME",
+            "SBMY","SBNT","SBOI","SBPC","SBPL","SBPP","SBPB","SBPN",
+            "SBPS","SBQI","SBRD","SBSC","SBSM","SBSR","SBSJ","SBTT",
+            "SBTK","SBTF","SBTB","SBTD","SBTU","SBUG","SBUY","SBVG",
+            "SBVH","SBQV","SBZM","SBKG","SBDN","SBIP","SBAM","SBAR",
+            "SBAU","SBAQ","SBAX","SBAE","SBBH","SBBP","SBBQ","SBBT",
+            "SBBU","SBCA","SBCC","SBCN","SBCJ","SBCV","SBCO","SBEK",
+            "SBES","SBFU","SBGM","SBGP","SBGV","SBGW","SBIC","SBIH",
+            "SBJA","SBJC","SBJD","SBJF","SBJP","SBJR","SBJI","SBJV",
+            "SBLE","SBLJ","SBLN","SBLS","SBMT","SBNM","SBPF","SBPR",
+            "SBST","SBTA","SBTC","SBTS","SBAF","SBAN","SBAA","SBCI"
           ]
-
-          # Remove duplicates
           ICAOS = list(dict.fromkeys(ICAOS))
+
+          def calc_flight_category(visib, clouds):
+              """Calculate VFR/MVFR/IFR/LIFR from visibility and cloud layers"""
+              # Parse visibility
+              vis_sm = None
+              if visib is not None:
+                  try:
+                      v = str(visib).replace("+","").strip()
+                      vis_sm = float(v)
+                  except:
+                      vis_sm = 10.0
+
+              # Find ceiling (BKN or OVC layer)
+              ceiling_ft = None
+              if clouds:
+                  for c in clouds:
+                      cover = c.get("cover","")
+                      base = c.get("base")
+                      if cover in ("BKN","OVC") and base is not None:
+                          if ceiling_ft is None or base < ceiling_ft:
+                              ceiling_ft = base
+
+              # Determine category
+              cat = "VFR"
+              if vis_sm is not None:
+                  if vis_sm < 1 or (ceiling_ft is not None and ceiling_ft < 500):
+                      cat = "LIFR"
+                  elif vis_sm < 3 or (ceiling_ft is not None and ceiling_ft < 1000):
+                      cat = "IFR"
+                  elif vis_sm <= 5 or (ceiling_ft is not None and ceiling_ft <= 3000):
+                      cat = "MVFR"
+              return cat
 
           BATCH = 50
           results = {}
 
           for i in range(0, len(ICAOS), BATCH):
-            batch = ICAOS[i:i+BATCH]
-            ids = ','.join(batch)
-            url = f'https://aviationweather.gov/api/data/metar?ids={ids}&format=json&hours=2'
-            try:
-              req = urllib.request.Request(url, headers={
-                'User-Agent': 'BrazilAviationMap/1.0 (github.com/PedroPacox/aviation-map)',
-                'Accept': 'application/json'
-              })
-              with urllib.request.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read())
-                for m in data:
-                  icao = m.get('icaoId')
-                  if icao:
-                    results[icao] = {
-                      'icaoId': icao,
-                      'flightCategory': m.get('flightCategory'),
-                      'rawOb': m.get('rawOb'),
-                      'temp': m.get('temp'),
-                      'dewp': m.get('dewp'),
-                      'wdir': m.get('wdir'),
-                      'wspd': m.get('wspd'),
-                      'visib': m.get('visib'),
-                      'altim': m.get('altim'),
-                      'clouds': m.get('clouds', []),
-                      'obsTime': m.get('obsTime')
-                    }
-              time.sleep(0.5)
-            except Exception as e:
-              print(f'Error batch {i}: {e}')
+              batch = ICAOS[i:i+BATCH]
+              ids = ",".join(batch)
+              url = f"https://aviationweather.gov/api/data/metar?ids={ids}&format=json&hours=2"
+              try:
+                  req = urllib.request.Request(url, headers={
+                      "User-Agent": "BrazilAviationMap/1.0 (github.com/PedroPacox/aviation-map)",
+                      "Accept": "application/json"
+                  })
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      data = json.loads(resp.read())
+                  for m in data:
+                      icao = m.get("icaoId")
+                      if not icao:
+                          continue
+                      visib = m.get("visib")
+                      clouds = m.get("clouds", [])
+                      cat = m.get("flightCategory") or calc_flight_category(visib, clouds)
+                      results[icao] = {
+                          "icaoId": icao,
+                          "flightCategory": cat,
+                          "rawOb": m.get("rawOb"),
+                          "temp": m.get("temp"),
+                          "dewp": m.get("dewp"),
+                          "wdir": m.get("wdir"),
+                          "wspd": m.get("wspd"),
+                          "visib": visib,
+                          "altim": m.get("altim"),
+                          "clouds": clouds,
+                          "obsTime": m.get("obsTime")
+                      }
+                  time.sleep(0.3)
+              except Exception as e:
+                  print(f"Error batch {i}: {e}")
 
           output = {
-            'updated': int(time.time()),
-            'count': len(results),
-            'data': results
+              "updated": int(time.time()),
+              "count": len(results),
+              "data": results
           }
+          with open("metar.json", "w") as f:
+              json.dump(output, f, separators=(",",":"))
 
-          with open('metar.json', 'w') as f:
-            json.dump(output, f, separators=(',', ':'))
-
-          print(f'Saved {len(results)} METARs to metar.json')
+          cats = {}
+          for v in results.values():
+              c = v["flightCategory"]
+              cats[c] = cats.get(c, 0) + 1
+          print(f"Saved {len(results)} METARs: {cats}")
           PYEOF
 
       - name: Commit METAR data
